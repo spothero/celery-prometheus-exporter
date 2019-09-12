@@ -15,6 +15,8 @@ import json
 import os
 from celery.utils.objects import FallbackContext
 import amqp.exceptions
+import redis
+import re
 
 __VERSION__ = (1, 2, 0, 'final', 0)
 
@@ -62,6 +64,9 @@ QUEUE_LENGTH = prometheus_client.Gauge(
     'celery_queue_length', 'Number of tasks in the queue.',
     ['queue_name']
 )
+CELERY_WORKERS = prometheus_client.Gauge(
+    'celery_worker_name', 'Number of celery workers instances.', ['worker_name'])
+CELERY_SERVER_INFO = prometheus_client.Gauge('celery_server_info', 'Redis server information.', ['server_info'])
 
 
 class MonitorThread(threading.Thread):
@@ -176,6 +181,7 @@ class WorkerMonitoringThread(threading.Thread):
     def __init__(self, app=None, *args, **kwargs):
         self._app = app
         self.log = logging.getLogger('workers-monitor')
+        self.alive_workers_info = dict()
         super(WorkerMonitoringThread, self).__init__(*args, **kwargs)
 
     def run(self):  # pragma: no cover
@@ -185,8 +191,23 @@ class WorkerMonitoringThread(threading.Thread):
 
     def update_workers_count(self):
         try:
-            WORKERS.set(len(self._app.control.ping(
-                timeout=self.celery_ping_timeout_seconds)))
+            alive_workers = self._app.control.ping(timeout=self.celery_ping_timeout_seconds)
+            alive_workers_count = len(alive_workers)
+            WORKERS.set(alive_workers_count)
+            if alive_workers_count == 0:
+                for worker_name, count in self.alive_workers_info.items():
+                    CELERY_WORKERS.labels(worker_name).set(0)
+            elif alive_workers:
+                workers_info = dict()
+                for workers in alive_workers:
+                    for worker_name in workers.keys():
+                        workers_info[worker_name] = workers_info.get(worker_name, 0) + 1
+
+                self.alive_workers_info = dict.fromkeys(self.alive_workers_info.keys(), 0)
+                self.alive_workers_info = dict(self.alive_workers_info, **workers_info)
+                for worker_name, count in self.alive_workers_info.items():
+                    CELERY_WORKERS.labels(worker_name).set(count)
+
         except Exception:  # pragma: no cover
             self.log.exception("Error while pinging workers")
 
@@ -230,7 +251,7 @@ class QueueLengthMonitoringThread(threading.Thread):
             try:
                 length = self.connection.default_channel.queue_declare(queue=queue, passive=True).message_count
             except (amqp.exceptions.ChannelError,) as e:
-                logging.warning("Queue Not Found: {}. Setting its value to zero. Error: {}".format(queue, str(e)))
+                # logging.warning("Queue Not Found: {}. Setting its value to zero. Error: {}".format(queue, str(e)))
                 length = 0
 
             self.set_queue_length(queue, length)
@@ -242,6 +263,50 @@ class QueueLengthMonitoringThread(threading.Thread):
         while True:
             self.measure_queues_length()
             time.sleep(self.periodicity_seconds)
+
+
+class RedisServerInfoMonitoringThread(threading.Thread):
+    periodicity_seconds = 30
+
+    def __init__(self, redis_client):
+        self.log = logging.getLogger('RedisServerInfoMonitoringThread')
+        self.redis_client = redis_client
+        self.server_info_keys = ['uptime_in_seconds', 'uptime_in_days', 'connected_clients', 'used_memory',
+                            'maxmemory', 'used_cpu_sys', 'used_cpu_user']
+        super(RedisServerInfoMonitoringThread, self).__init__()
+
+    def get_server_info(self):
+        server_info = self.redis_client.info()
+        for server_info_metric in self.server_info_keys:
+            CELERY_SERVER_INFO.labels(server_info_metric).set(server_info.get(server_info_metric,   0))
+
+    def run(self):  # pragma: no cover
+        while True:
+            self.get_server_info()
+            time.sleep(self.periodicity_seconds)
+
+
+class DeleteOrphanReplyCeleryEvents(threading.Thread):
+    periodicity_seconds = 60
+
+    def __init__(self, redis_client):
+        self.log = logging.getLogger('DeleteOrphanReplyCeleryEvents')
+        self.redis_client = redis_client
+        super(DeleteOrphanReplyCeleryEvents, self).__init__()
+
+    def delete_orphan_reply_pidbox(self):
+        reply_celery_pidboxs = self.redis_client.keys('*reply.celery.pidbox')
+        reply_celery_pidbox_keys = [k.rsplit(b'.', 0)[0].decode() for k in reply_celery_pidboxs]
+        for reply_celery_pidbox_key in reply_celery_pidbox_keys:
+            if re.search(r"^(?!.*kombu).*$", reply_celery_pidbox_key):
+                self.log.info('deleting orphan reply_celery_pidbox:{}'.format(reply_celery_pidbox_key))
+                self.redis_client.delete(reply_celery_pidbox_key)
+
+    def run(self):  # pragma: no cover
+        while True:
+            self.delete_orphan_reply_pidbox()
+            time.sleep(self.periodicity_seconds)
+
 
 def setup_metrics(app):
     """
@@ -359,14 +424,26 @@ def main():  # pragma: no cover
     w.daemon = True
     w.start()
 
-    if opts.queue_list:
+    if opts.broker.startswith('redis://'):
+        redis_client = redis.Redis.from_url(opts.broker)
+        queue_keys = redis_client.keys('_kombu.binding.*')
+        possible_queue_names = [k.rsplit(b'.', 1)[1].decode() for k in queue_keys]
+        q = QueueLengthMonitoringThread(app=app, queue_list=possible_queue_names)
+        q.daemon = True
+        q.start()
+        server_info = RedisServerInfoMonitoringThread(redis_client=redis_client)
+        server_info.daemon = True
+        server_info.start()
+        orphan_reply_delete = DeleteOrphanReplyCeleryEvents(redis_client=redis_client)
+        orphan_reply_delete.daemon = True
+        orphan_reply_delete.start()
+    elif opts.queue_list:
         if type(opts.queue_list) == str:
             queue_list = opts.queue_list.split(',')
         else:
             queue_list = opts.queue_list
 
         q = QueueLengthMonitoringThread(app=app, queue_list=queue_list)
-
         q.daemon = True
         q.start()
 
