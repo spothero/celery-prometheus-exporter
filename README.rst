@@ -21,6 +21,8 @@ So far it provides access to the following metrics:
   tasks are picked up by a worker
 * ``celery_tasks_runtime_seconds`` tracks the number of seconds tasks take
   until completed as histogram
+* ``celery_worker_name`` exposes the number of currently alive worker(s) each worker(s) name with the number of instance(s) count
+* ``celery_queue_length`` exposes the number of ready messages on the queue
 
 
 How to use
@@ -77,8 +79,7 @@ Buckets should be passed as a list of float values separated by a comma.
 E.g. ``".005, .05, 0.1, 1.0, 2.5"``.
 
 Use ``--queue-list`` to specify the list of queues that will have its length
-monitored (Automatic Discovery of queues isn't supported right now, see limitations/
-caveats. You can use the `QUEUE_LIST` environment variable as well.
+monitored, see limitations/caveats. You can use the `QUEUE_LIST` environment variable as well.
 
 If you then look at the exposed metrics, you should see something like this::
 
@@ -132,14 +133,15 @@ If you then look at the exposed metrics, you should see something like this::
   celery_task_latency_sum 16.478713035583496
   celery_queue_length{queue_name="queue1"} 35.0
   celery_queue_length{queue_name="queue2"} 0.0
+  celery_worker_name{worker_name="celery@<name of the worker>"} 0.0
 
-Limitations
-===========
+Limitations/Caveats
+===================
 
 * Among tons of other features celery-prometheus-exporter doesn't support stats
   for multiple queues. As far as I can tell, only the routing key is exposed
   through the events API which might be enough to figure out the final queue,
   though.
 * This has only been tested with Redis so far.
-* At this point, you should specify the queues that will be monitored using an
-  environment variable or an arg (`--queue-list`).
+* If broker url is redis it will automatically find queues, you don't need to pass the QUEUE-LIST environment variable or an arg (`--queue-list`).
+* If broker url is non redis you should specify the queues that will be monitored using the QUEUE-LIST environment variable or an arg (`--queue-list`).
