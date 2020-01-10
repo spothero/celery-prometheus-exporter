@@ -53,6 +53,10 @@ TASKS = prometheus_client.Gauge(
 TASKS_NAME = prometheus_client.Gauge(
     'celery_tasks_by_name', 'Number of tasks per state and name',
     ['state', 'name'])
+TASK_FAILURES = prometheus_client.Counter(
+    'celery_task_failures_by_name', 'Number of task failures by name',
+    ['name']
+)
 TASKS_RUNTIME = prometheus_client.Histogram(
     'celery_tasks_runtime_seconds', 'Task runtime (seconds)', ['name'], buckets=RUNTIME_HISTOGRAM_BUCKETS)
 WORKERS = prometheus_client.Gauge(
@@ -107,6 +111,8 @@ class MonitorThread(threading.Thread):
                     state = task.state
                 if state == celery.states.STARTED:
                     self._observe_latency(evt)
+                if state == celery.states.FAILURE
+                    self._observe_failure(evt)
                 self._collect_tasks(evt, state)
 
     def _observe_latency(self, evt):
@@ -119,6 +125,9 @@ class MonitorThread(threading.Thread):
             if prev_evt.state == celery.states.RECEIVED:
                 LATENCY.observe(
                     evt['local_received'] - prev_evt.local_received)
+
+    def _observe_failure(self, evt):
+        TASK_FAILURES.labels(name=event.name).inc()
 
     def _collect_tasks(self, evt, state):
         if state in celery.states.READY_STATES:
