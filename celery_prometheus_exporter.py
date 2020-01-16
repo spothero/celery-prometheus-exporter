@@ -90,6 +90,7 @@ class MonitorThread(threading.Thread):
         self._known_states = set()
         self._known_states_names = set()
         self._tasks_started = dict()
+        self._failures = set()
         super(MonitorThread, self).__init__(*args, **kwargs)
 
     def run(self):  # pragma: no cover
@@ -109,10 +110,12 @@ class MonitorThread(threading.Thread):
                     task = celery.events.state.Task()
                     task.event(evt_state)
                     state = task.state
+
+                if state == celery.states.FAILURE:
+                    self._observe_failure(evt)
                 if state == celery.states.STARTED:
                     self._observe_latency(evt)
-                if state == celery.states.FAILURE
-                    self._observe_failure(evt)
+                    
                 self._collect_tasks(evt, state)
 
     def _observe_latency(self, evt):
@@ -127,7 +130,18 @@ class MonitorThread(threading.Thread):
                     evt['local_received'] - prev_evt.local_received)
 
     def _observe_failure(self, evt):
-        TASK_FAILURES.labels(name=event.name).inc()
+        self.log.info("Failure detected for event: \n {}".format(evt))
+        uuid = evt['uuid']
+
+        # Don't increment counter for the same event more than once
+        if uuid in self._failures:
+            self.log.info("Failure already counted for event '{}'".format(uuid))
+        else:
+            event = self._state.tasks.get(uuid)
+            TASK_FAILURES.labels(name=event.name).inc()
+            self.log.info("Failure counter incremented for event '{}'".format(event.name))
+            self._failures.add(uuid)
+        
 
     def _collect_tasks(self, evt, state):
         if state in celery.states.READY_STATES:

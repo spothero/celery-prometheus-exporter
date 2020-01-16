@@ -1,5 +1,13 @@
 all: celery_exporter-celery3.img celery_exporter-celery4.img
 
+docker-build:
+	docker build -f Dockerfile-celery3 -t spothero/redis-celery-exporter:${VERSION} .
+
+docker-push:
+	docker push spothero/redis-celery-exporter:${VERSION}
+
+docker-publish: docker-build docker-push
+
 celery_exporter-celery3.img: celery_prometheus_exporter.py Dockerfile-celery3 requirements/*
 	docker build -f Dockerfile-celery3 -t celery_exporter:1-celery3 .
 	docker save -o $@ celery_exporter:1-celery3
