@@ -151,13 +151,15 @@ Building
 ==========
 Build the container with
 
-.. code-block:: shell
+::
+
    docker build -f Dockerfile-celery3 -t spothero/redis-celery-exporter:$VERSION --build-arg BUILD_VERSION=$VERSION .
 
 replacing ``$VERSION`` with the semantic version you're building. For the latest version check your docker repository.
 
 Push container with
 
-.. code-block:: shell
+::
+
     docker push spothero/redis-celery-exporter:$VERSION
 
