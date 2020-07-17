@@ -34,6 +34,16 @@ command::
 
   $ celery-prometheus-exporter
   Starting HTTPD on 0.0.0.0:8888
+  
+  
+Building
+==========
+Build the container with
+`docker build -f Dockerfile-celery3 -t spothero/redis-celery-exporter:$VERSION --build-arg BUILD_VERSION=$VERSION .`
+replacing `$VERSION` with the version you're building
+
+Push container with
+`docker push spothero/redis-celery-exporter:$VERSION`
 
 This package only depends on Celery directly, so you will have to install
 whatever other dependencies you will need for it to speak with your broker 🙂
