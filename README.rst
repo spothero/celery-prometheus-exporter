@@ -34,7 +34,8 @@ command::
 
   $ celery-prometheus-exporter
   Starting HTTPD on 0.0.0.0:8888
-
+  
+  
 This package only depends on Celery directly, so you will have to install
 whatever other dependencies you will need for it to speak with your broker 🙂
 
@@ -145,3 +146,20 @@ Limitations/Caveats
 * This has only been tested with Redis so far.
 * If broker url is redis it will automatically find queues, you don't need to pass the QUEUE-LIST environment variable or an arg (`--queue-list`).
 * If broker url is non redis you should specify the queues that will be monitored using the QUEUE-LIST environment variable or an arg (`--queue-list`).
+
+Building
+==========
+Build the container with
+
+::
+
+   docker build -f Dockerfile-celery3 -t spothero/redis-celery-exporter:$VERSION --build-arg BUILD_VERSION=$VERSION .
+
+replacing ``$VERSION`` with the semantic version you're building. For the latest version check your docker repository.
+
+Push container with
+
+::
+
+    docker push spothero/redis-celery-exporter:$VERSION
+
