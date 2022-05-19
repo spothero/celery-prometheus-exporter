@@ -403,6 +403,8 @@ def main():  # pragma: no cover
 
     logging.info('Setting up celery for {}'.format(opts.broker))
     app = celery.Celery(broker=opts.broker)
+    app.conf.accept_content = {"pickle", "json"}
+    app.conf.result_accept_content = {"pickle", "json"}
 
     if opts.transport_options:
         try:
