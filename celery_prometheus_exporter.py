@@ -86,6 +86,7 @@ class MonitorThread(threading.Thread):
         self._known_states = set()
         self._known_states_names = set()
         self._tasks_started = dict()
+        self._custom_metrics = dict()
         super(MonitorThread, self).__init__(*args, **kwargs)
 
     def run(self):  # pragma: no cover
@@ -95,7 +96,8 @@ class MonitorThread(threading.Thread):
         # Events might come in in parallel. Celery already has a lock
         # that deals with this exact situation so we'll use that for now.
         with self._state._mutex:
-            if celery.events.group_from(evt['type']) == 'task':
+            group = celery.events.group_from(evt['type'])
+            if group == 'task':
                 evt_state = evt['type'][5:]
                 try:
                     # Celery 4
@@ -108,6 +110,39 @@ class MonitorThread(threading.Thread):
                 if state == celery.states.STARTED:
                     self._observe_latency(evt)
                 self._collect_tasks(evt, state)
+            elif group == 'metric':
+                self._process_custom_metric(evt)
+
+    def _process_custom_metric(self, evt: celery.events.Event):
+        """
+        Convert a celery event into a Prometheus metric
+        """
+        metric_type = evt.get('metric_type')
+        if not metric_type:
+            self.log.warning(f"Could not determine custom metric type from received event")
+            return
+
+        metric_name = evt.get('name')
+        if not metric_name:
+            self.log.warning(f"Could not determine custom metric name from received event")
+            return
+
+        documentation = evt.get("documentation", f"{metric_type} - {metric_name}")
+        label_values = evt.get("label_values", {})
+
+        if metric_type == 'counter':
+            self._process_counter_metric(metric_name, label_values, documentation)
+        else:
+            self.log.warning(f"Custom metric type '{metric_type}' is unsupported")
+
+    def _process_counter_metric(self, name: str, label_values: dict, documentation: str):
+        counter = self._custom_metrics.get(name)
+        if not counter:
+            # Register and cache a new Counter metric
+            counter = prometheus_client.Counter(name, documentation, list(label_values.keys()))
+            self._custom_metrics[name] = counter
+
+        counter.labels(**label_values).inc()
 
     def _observe_latency(self, evt):
         try:

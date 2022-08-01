@@ -90,6 +90,7 @@ class TestMockedCelery(TestCase):
         self._assert_task_states(celery.states.ALL_STATES, 0)
         assert REGISTRY.get_sample_value('celery_task_latency_count') == 0
         assert REGISTRY.get_sample_value('celery_task_latency_sum') == 0
+        assert REGISTRY.get_sample_value('celery_custom_counter_total') is None
 
         m._process_event(Event(
             'task-received', uuid=task_uuid,  name=self.task,
@@ -110,6 +111,17 @@ class TestMockedCelery(TestCase):
             local_received=local_received + latency_before_started + runtime))
         self._assert_all_states({celery.states.SUCCESS})
 
+        m._process_event(Event(
+            'metric-custom-counter',
+            documentation='Test Counter Metric',
+            label_values={'some_label': 'some_value'},
+            metric_type='counter',
+            name='celery_custom_counter_total',
+        ))
+
+        assert REGISTRY.get_sample_value(
+            'celery_custom_counter_total',
+            labels=dict(some_label='some_value')) == 1
         assert REGISTRY.get_sample_value('celery_task_latency_count') == 1
         self.assertAlmostEqual(REGISTRY.get_sample_value(
             'celery_task_latency_sum'), latency_before_started)
