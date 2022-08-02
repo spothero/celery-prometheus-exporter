@@ -136,6 +136,27 @@ If you then look at the exposed metrics, you should see something like this::
   celery_queue_length{queue_name="queue2"} 0.0
   celery_worker_name{worker_name="celery@<name of the worker>"} 0.0
 
+Custom Metrics
+===================
+
+celery-prometheus-exporter can collect custom application metrics by processing specially
+formatted events dispatched from within running tasks.
+
+Dispatched events must have a type prefixed with "metric-" and must contain ``metric_type`` and ``name`` fields.
+Optional fields ``documentation`` and ``label_values`` can also be provided if desired.
+
+::
+
+  Event(
+      "metric-custom-counter",
+      documentation="Example counter metric",
+      label_values={"some_label": "some_value"},
+      metric_type="counter",
+      name="celery_custom_counter_total",
+  )
+
+* Note that "counter" is currently the only supported ``metric_type``.
+
 Limitations/Caveats
 ===================
 
