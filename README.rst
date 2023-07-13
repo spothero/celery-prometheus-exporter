@@ -155,7 +155,7 @@ Optional fields ``documentation`` and ``label_values`` can also be provided if d
       name="celery_custom_counter_total",
   )
 
-* Note that "counter" is currently the only supported ``metric_type``.
+* Note that "counter, gauge, histogram" is currently the only supported ``metric_type``.
 
 Limitations/Caveats
 ===================
