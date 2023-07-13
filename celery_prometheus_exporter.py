@@ -132,8 +132,36 @@ class MonitorThread(threading.Thread):
 
         if metric_type == 'counter':
             self._process_counter_metric(metric_name, label_values, documentation)
+        elif metric_type == 'gauge':
+            amount = evt.get("amount", None);
+            if not amount:
+                self.log.warning(f"Missing 'amount' for histogram")
+                return
+            self._process_gauge_metric(metric_name, label_values, documentation, amount)
+        elif metric_type == 'histogram':
+            amount = evt.get("amount", None);
+            if not amount:
+                self.log.warning(f"Missing 'amount' for histogram")
+                return
+            self._process_histogram_metric(metric_name, label_values, documentation, amount)
         else:
             self.log.warning(f"Custom metric type '{metric_type}' is unsupported")
+
+    def _process_histogram_metric(self, name: str, label_values: dict, documentation: str, amount: float):
+        histogram = self._custom_metrics.get(name)
+        if not histogram:
+            histogram = prometheus_client.Histogram(name, documentation, list(label_values.keys()))
+            self._custom_metrics[name] = histogram
+
+        histogram.labels(**label_values).observe(amount)
+
+    def _process_gauge_metric(self, name: str, label_values: dict, documentation: str, amount: float):
+        gauge = self._custom_metrics.get(name)
+        if not gauge:
+            gauge = prometheus_client.Gauge(name, documentation, list(label_values.keys()))
+            self._custom_metrics[name] = gauge
+
+        gauge.labels(**label_values).set(amount)
 
     def _process_counter_metric(self, name: str, label_values: dict, documentation: str):
         counter = self._custom_metrics.get(name)

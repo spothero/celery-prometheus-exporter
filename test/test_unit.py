@@ -3,7 +3,6 @@ from time import time
 import os
 import celery
 import celery.states
-import amqp.exceptions
 
 from celery.events import Event
 from celery.utils import uuid
@@ -46,6 +45,7 @@ class TestMockedCelery(TestCase):
 
     def setUp(self):
         self.app = get_celery_app()
+        # requires celery < 5
         with patch('celery.task.control.inspect.registered_tasks') as tasks:
             tasks.return_value = {'worker1': [self.task]}
             setup_metrics(self.app)  # reset metrics
@@ -111,6 +111,17 @@ class TestMockedCelery(TestCase):
             local_received=local_received + latency_before_started + runtime))
         self._assert_all_states({celery.states.SUCCESS})
 
+        assert REGISTRY.get_sample_value('celery_task_latency_count') == 1
+
+        self.assertAlmostEqual(REGISTRY.get_sample_value(
+            'celery_task_latency_sum'), latency_before_started)
+        assert REGISTRY.get_sample_value(
+            'celery_tasks_runtime_seconds_sum',
+            labels=dict(name=self.task)) == 234.5
+        assert REGISTRY.get_sample_value(
+            'celery_tasks_runtime_seconds_count',
+            labels=dict(name=self.task)) == 1
+
         m._process_event(Event(
             'metric-custom-counter',
             documentation='Test Counter Metric',
@@ -118,19 +129,34 @@ class TestMockedCelery(TestCase):
             metric_type='counter',
             name='celery_custom_counter_total',
         ))
-
         assert REGISTRY.get_sample_value(
             'celery_custom_counter_total',
             labels=dict(some_label='some_value')) == 1
-        assert REGISTRY.get_sample_value('celery_task_latency_count') == 1
-        self.assertAlmostEqual(REGISTRY.get_sample_value(
-            'celery_task_latency_sum'), latency_before_started)
+
+        m._process_event(Event(
+            'metric-custom-gauge',
+            documentation='Test Counter Metric',
+            label_values={'some_label': 'some_value'},
+            metric_type='gauge',
+            name='celery_custom_gauge_seconds',
+            amount=100,
+        ))
         assert REGISTRY.get_sample_value(
-            'celery_tasks_runtime_seconds_count',
-            labels=dict(name=self.task)) == 1
+            'celery_custom_gauge_seconds',
+            labels=dict(some_label='some_value')) == 100
+
+        m._process_event(Event(
+            'metric-custom-histogram',
+            documentation='Test Counter Metric',
+            label_values={'some_label': 'some_value'},
+            metric_type='histogram',
+            name='celery_custom_histogram_seconds',
+            amount=200,
+        ))
         assert REGISTRY.get_sample_value(
-            'celery_tasks_runtime_seconds_sum',
-            labels=dict(name=self.task)) == 234.5
+            'celery_custom_histogram_seconds_sum',
+            labels=dict(some_label='some_value')) == 200
+
 
     def test_enable_events(self):
         with patch.object(
