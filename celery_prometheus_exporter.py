@@ -129,23 +129,26 @@ class MonitorThread(threading.Thread):
 
         documentation = evt.get("documentation", f"{metric_type} - {metric_name}")
         label_values = evt.get("label_values", {})
+        amount = evt.get("amount")
+        label_values['event_source_hostname'] = evt.get('hostname', 'unknown')
+        try:
+            if metric_type == 'counter':
+                self._process_counter_metric(metric_name, label_values, documentation)
+            elif metric_type == 'gauge':
+                if not amount:
+                    self.log.warning(f"Missing 'amount' for histogram")
+                    return
+                self._process_gauge_metric(metric_name, label_values, documentation, amount)
+            elif metric_type == 'histogram':
+                if not amount:
+                    self.log.warning(f"Missing 'amount' for histogram")
+                    return
+                self._process_histogram_metric(metric_name, label_values, documentation, amount)
+            else:
+                self.log.warning(f"Custom metric type '{metric_type}' is unsupported")
 
-        if metric_type == 'counter':
-            self._process_counter_metric(metric_name, label_values, documentation)
-        elif metric_type == 'gauge':
-            amount = evt.get("amount", None);
-            if not amount:
-                self.log.warning(f"Missing 'amount' for histogram")
-                return
-            self._process_gauge_metric(metric_name, label_values, documentation, amount)
-        elif metric_type == 'histogram':
-            amount = evt.get("amount", None);
-            if not amount:
-                self.log.warning(f"Missing 'amount' for histogram")
-                return
-            self._process_histogram_metric(metric_name, label_values, documentation, amount)
-        else:
-            self.log.warning(f"Custom metric type '{metric_type}' is unsupported")
+        except Exception as e:
+            self.log.warning(f"Failed to process histogram metric: {evt} {e}")
 
     def _process_histogram_metric(self, name: str, label_values: dict, documentation: str, amount: float):
         histogram = self._custom_metrics.get(name)

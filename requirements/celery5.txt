@@ -1,2 +1,5 @@
 celery==5.2.6
 redis==4.2.2
+
+# Without this version the the application will fail to run in the docker image
+importlib-metadata==4.12.0
