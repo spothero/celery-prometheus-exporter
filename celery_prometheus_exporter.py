@@ -130,10 +130,11 @@ class MonitorThread(threading.Thread):
         documentation = evt.get("documentation", f"{metric_type} - {metric_name}")
         label_values = evt.get("label_values", {})
         amount = evt.get("amount")
-        label_values['event_source_hostname'] = evt.get('hostname', 'unknown')
         try:
             if metric_type == 'counter':
-                self._process_counter_metric(metric_name, label_values, documentation)
+                if not amount:
+                    amount = 1
+                self._process_counter_metric(metric_name, label_values, documentation, amount)
             elif metric_type == 'gauge':
                 if not amount:
                     self.log.warning(f"Missing 'amount' for histogram")
@@ -166,14 +167,14 @@ class MonitorThread(threading.Thread):
 
         gauge.labels(**label_values).set(amount)
 
-    def _process_counter_metric(self, name: str, label_values: dict, documentation: str):
+    def _process_counter_metric(self, name: str, label_values: dict, documentation: str, amount: float):
         counter = self._custom_metrics.get(name)
         if not counter:
             # Register and cache a new Counter metric
             counter = prometheus_client.Counter(name, documentation, list(label_values.keys()))
             self._custom_metrics[name] = counter
 
-        counter.labels(**label_values).inc()
+        counter.labels(**label_values).inc(amount)
 
     def _observe_latency(self, evt):
         try:
