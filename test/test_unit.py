@@ -125,13 +125,12 @@ class TestMockedCelery(TestCase):
         m._process_event(Event(
             'metric-custom-counter',
             documentation='Test Counter Metric',
-            label_values={'some_label': 'some_value'},
             metric_type='counter',
             name='celery_custom_counter_total',
         ))
         assert REGISTRY.get_sample_value(
             'celery_custom_counter_total',
-            labels=dict(some_label='some_value')) == 1
+            ) == 1
 
         m._process_event(Event(
             'metric-custom-counter',
