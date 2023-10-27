@@ -1,22 +1,25 @@
 from __future__ import print_function
+
 import argparse
-import celery
-import celery.states
-import celery.events
 import collections
-from itertools import chain
+import json
 import logging
-import prometheus_client
+import os
+import re
 import signal
 import sys
 import threading
 import time
-import json
-import os
-from celery.utils.objects import FallbackContext
+from itertools import chain
+from typing import Optional
+
 import amqp.exceptions
+import celery
+import celery.events
+import celery.states
+import prometheus_client
 import redis
-import re
+from celery.utils.objects import FallbackContext
 
 __VERSION__ = (1, 2, 0, 'final', 0)
 
@@ -29,9 +32,9 @@ def get_histogram_buckets_from_evn(env_name):
     if env_name in os.environ:
         buckets = decode_buckets(os.environ.get(env_name))
     else:
-        if hasattr(prometheus_client.Histogram, 'DEFAULT_BUCKETS'): # pragma: no cover
+        if hasattr(prometheus_client.Histogram, 'DEFAULT_BUCKETS'):  # pragma: no cover
             buckets = prometheus_client.Histogram.DEFAULT_BUCKETS
-        else: # pragma: no cover
+        else:  # pragma: no cover
             # For prometheus-client < 0.3.0 we cannot easily access
             # the default buckets:
             buckets = (.005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5, 5.0, 7.5, 10.0, float('inf'))
@@ -132,24 +135,27 @@ class MonitorThread(threading.Thread):
         amount = evt.get("amount")
         try:
             if metric_type == 'counter':
-                if not amount:
+                if amount is None:
                     amount = 1
+
                 self._process_counter_metric(metric_name, label_values, documentation, amount)
             elif metric_type == 'gauge':
-                if not amount:
-                    self.log.warning(f"Missing 'amount' for histogram")
+                if amount is None:
+                    self.log.warning(f"amount={amount}' for gauge={metric_name}")
                     return
+
                 self._process_gauge_metric(metric_name, label_values, documentation, amount)
             elif metric_type == 'histogram':
-                if not amount:
-                    self.log.warning(f"Missing 'amount' for histogram")
+                if amount is None:
+                    self.log.warning(f"amount={amount}' for histogram={metric_name}")
                     return
+
                 self._process_histogram_metric(metric_name, label_values, documentation, amount)
             else:
                 self.log.warning(f"Custom metric type '{metric_type}' is unsupported")
 
         except Exception as e:
-            self.log.warning(f"Failed to process histogram metric: {evt} {e}")
+            self.log.warning(f"Failed to process metric", e, evt)
 
     def _process_histogram_metric(self, name: str, label_values: dict, documentation: str, amount: float):
         histogram = self._custom_metrics.get(name)
@@ -157,7 +163,9 @@ class MonitorThread(threading.Thread):
             histogram = prometheus_client.Histogram(name, documentation, list(label_values.keys()))
             self._custom_metrics[name] = histogram
 
-        histogram.labels(**label_values).observe(amount)
+        if label_values:
+            histogram = histogram.labels(**label_values)
+        histogram.observe(amount)
 
     def _process_gauge_metric(self, name: str, label_values: dict, documentation: str, amount: float):
         gauge = self._custom_metrics.get(name)
@@ -165,7 +173,9 @@ class MonitorThread(threading.Thread):
             gauge = prometheus_client.Gauge(name, documentation, list(label_values.keys()))
             self._custom_metrics[name] = gauge
 
-        gauge.labels(**label_values).set(amount)
+        if label_values:
+            gauge = gauge.labels(**label_values)
+        gauge.set(amount)
 
     def _process_counter_metric(self, name: str, label_values: dict, documentation: str, amount: float):
         counter = self._custom_metrics.get(name)
@@ -174,7 +184,9 @@ class MonitorThread(threading.Thread):
             counter = prometheus_client.Counter(name, documentation, list(label_values.keys()))
             self._custom_metrics[name] = counter
 
-        counter.labels(**label_values).inc(amount)
+        if label_values:
+            counter = counter.labels(**label_values)
+        counter.inc(amount)
 
     def _observe_latency(self, evt):
         try:
@@ -203,7 +215,7 @@ class MonitorThread(threading.Thread):
             TASKS_NAME.labels(state=state, name=event.name).inc()
             if 'runtime' in evt:
                 TASKS_RUNTIME.labels(name=event.name) \
-                             .observe(evt['runtime'])
+                    .observe(evt['runtime'])
         except (KeyError, AttributeError):  # pragma: no cover
             pass
 
@@ -339,13 +351,13 @@ class RedisServerInfoMonitoringThread(threading.Thread):
         self.log = logging.getLogger('RedisServerInfoMonitoringThread')
         self.redis_client = redis_client
         self.server_info_keys = ['uptime_in_seconds', 'uptime_in_days', 'connected_clients', 'used_memory',
-                            'maxmemory', 'used_cpu_sys', 'used_cpu_user']
+                                 'maxmemory', 'used_cpu_sys', 'used_cpu_user']
         super(RedisServerInfoMonitoringThread, self).__init__()
 
     def get_server_info(self):
         server_info = self.redis_client.info()
         for server_info_metric in self.server_info_keys:
-            CELERY_SERVER_INFO.labels(server_info_metric).set(server_info.get(server_info_metric,   0))
+            CELERY_SERVER_INFO.labels(server_info_metric).set(server_info.get(server_info_metric, 0))
 
     def run(self):  # pragma: no cover
         while True:
