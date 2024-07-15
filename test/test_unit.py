@@ -135,39 +135,42 @@ class TestMockedCelery(TestCase):
         m._process_event(Event(
             'metric-custom-counter',
             documentation='Test Counter Metric',
-            label_values={'some_label': 'some_value'},
+            label_values={'label1': 'value1', 'label2': 'value2'},
             metric_type='counter',
             name='celery_custom_counter2_total',
             amount=35,
         ))
         assert REGISTRY.get_sample_value(
             'celery_custom_counter2_total',
-            labels=dict(some_label='some_value')) == 35
+            labels=dict(label1='value1', label2='value2')) == 35
 
         m._process_event(Event(
             'metric-custom-gauge',
-            documentation='Test Counter Metric',
-            label_values={'some_label': 'some_value'},
+            documentation='Test Gauge Metric',
+            label_values={'label1': 'value1', 'label2': 'value2'},
             metric_type='gauge',
             name='celery_custom_gauge_seconds',
             amount=100,
         ))
         assert REGISTRY.get_sample_value(
             'celery_custom_gauge_seconds',
-            labels=dict(some_label='some_value')) == 100
+            labels=dict(label1='value1', label2='value2')) == 100
 
         m._process_event(Event(
             'metric-custom-histogram',
-            documentation='Test Counter Metric',
-            label_values={'some_label': 'some_value'},
+            documentation='Test Histogram Metric',
+            label_values={'label1': 'value1', 'label2': 'value2'},
             metric_type='histogram',
             name='celery_custom_histogram_seconds',
             amount=200,
+            buckets=[10, 100, 150, 250, float('inf')]
         ))
         assert REGISTRY.get_sample_value(
             'celery_custom_histogram_seconds_sum',
-            labels=dict(some_label='some_value')) == 200
-
+            labels=dict(label1='value1', label2='value2')) == 200
+        assert REGISTRY.get_sample_value(
+            'celery_custom_histogram_seconds_bucket',
+            labels=dict(label1='value1', label2='value2', le='250.0')) == 1.0
 
     def test_enable_events(self):
         with patch.object(
@@ -184,7 +187,7 @@ class TestMockedCelery(TestCase):
 
         sample_task.delay()
         monitoring_thread_instance.measure_queues_length()
-        sample = REGISTRY.get_sample_value('celery_queue_length', {'queue_name':'realqueue'})
+        sample = REGISTRY.get_sample_value('celery_queue_length', {'queue_name': 'realqueue'})
 
         self.assertEqual(1.0, sample)
 
@@ -192,7 +195,7 @@ class TestMockedCelery(TestCase):
         instance = QueueLengthMonitoringThread(app=self.app, queue_list=['noqueue'])
 
         instance.measure_queues_length()
-        sample = REGISTRY.get_sample_value('celery_queue_length', {'queue_name':'noqueue'})
+        sample = REGISTRY.get_sample_value('celery_queue_length', {'queue_name': 'noqueue'})
 
         self.assertEqual(0.0, sample)
 

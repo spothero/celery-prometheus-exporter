@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from itertools import chain
-from typing import Optional
+from typing import Optional, List
 
 import amqp.exceptions
 import celery
@@ -146,21 +146,30 @@ class MonitorThread(threading.Thread):
 
                 self._process_gauge_metric(metric_name, label_values, documentation, amount)
             elif metric_type == 'histogram':
+                buckets = evt.get("buckets")
                 if amount is None:
                     self.log.warning(f"amount={amount}' for histogram={metric_name}")
                     return
 
-                self._process_histogram_metric(metric_name, label_values, documentation, amount)
+                self._process_histogram_metric(metric_name, label_values, documentation, amount, buckets)
             else:
                 self.log.warning(f"Custom metric type '{metric_type}' is unsupported")
 
         except Exception as e:
             self.log.warning(f"Failed to process metric", e, evt)
 
-    def _process_histogram_metric(self, name: str, label_values: dict, documentation: str, amount: float):
+    def _process_histogram_metric(self, name: str, label_values: dict, documentation: str, amount: float, buckets: Optional[List[float]]):
         histogram = self._custom_metrics.get(name)
         if not histogram:
-            histogram = prometheus_client.Histogram(name, documentation, list(label_values.keys()))
+            if not buckets:
+                buckets = prometheus_client.Histogram.DEFAULT_BUCKETS
+
+            histogram = prometheus_client.Histogram(
+                name=name,
+                documentation=documentation,
+                labelnames=list(label_values.keys()),
+                buckets=buckets,
+            )
             self._custom_metrics[name] = histogram
 
         if label_values:
