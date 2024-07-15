@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from itertools import chain
-from typing import Union, Optional, List
+from typing import Optional, List
 
 import amqp.exceptions
 import celery
