@@ -174,7 +174,7 @@ Build the container with
 
 ::
 
-   REGISTRY=${REGISTRY:-46066144012.dkr.ecr.us-west-2.amazonaws.com}
+   REGISTRY=${REGISTRY:-446066144012.dkr.ecr.us-west-2.amazonaws.com}
    docker build --platform linux/amd64 -f Dockerfile-celery5 -t $REGISTRY/spothero/redis-celery-exporter:$VERSION --build-arg BUILD_VERSION=$VERSION .
 
 replacing ``$VERSION`` with the semantic version you're building. For the latest version check your docker repository.
