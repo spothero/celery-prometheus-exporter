@@ -174,7 +174,7 @@ Build the container with
 
 ::
 
-   docker build --platform linux/amd64 -f Dockerfile-celery5 -t spothero/redis-celery-exporter:$VERSION --build-arg BUILD_VERSION=$VERSION .
+   docker build --platform linux/amd64 -f Dockerfile-celery6 -t spothero/redis-celery-exporter:$VERSION --build-arg BUILD_VERSION=$VERSION .
 
 replacing ``$VERSION`` with the semantic version you're building. For the latest version check your docker repository.
 
@@ -183,4 +183,3 @@ Push container with
 ::
 
     docker push spothero/redis-celery-exporter:$VERSION
-
